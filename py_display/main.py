@@ -10,6 +10,7 @@ ffi.cdef("""
         float x, y, z;
         float vx, vy, vz;
         float mass;
+        uint64_t morton_index;
     } Particle;
 
     typedef struct {
@@ -22,22 +23,24 @@ ffi.cdef("""
     void render_cpu(Particle* particles, int count, uint8_t* pixels, int width, int height);
 """)
 
-# Points to: N-BODY PROBLEM SIM/c_core/physics.dll
+# Path correction for your folder structure
 dll_path = os.path.join(os.path.dirname(__file__), "..", "c_core", "physics.dll")
-
 if not os.path.exists(dll_path):
-    print("DLL not found. Please compile physics.c")
+    print(f"DLL not found at: {dll_path}")
+    print("Please compile physics.c in the c_core folder!")
     exit()
 lib = ffi.dlopen(dll_path)
 
 # --- Init Data ---
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 1000, 800
 NUM_PARTICLES = 100000
 
+# Updated Dtype with Morton (u8 = uint64)
 particle_dtype = np.dtype([
     ('x', 'f4'), ('y', 'f4'), ('z', 'f4'),
     ('vx', 'f4'), ('vy', 'f4'), ('vz', 'f4'),
-    ('mass', 'f4')
+    ('mass', 'f4'),
+    ('morton', 'u8') 
 ], align=True)
 
 particles_np = np.zeros(NUM_PARTICLES, dtype=particle_dtype)
@@ -69,7 +72,7 @@ pixel_ptr = ffi.cast("uint8_t*", pixel_buffer.ctypes.data)
 
 running = True
 while running:
-    # 1. Physics (Spin)
+    # 1. Physics (Sort + Spin)
     lib.step_simulation(particles_ptr, config[0])
     
     # 2. Render
@@ -80,7 +83,7 @@ while running:
     surface = pygame.surfarray.make_surface(surface_array.swapaxes(0, 1))
     screen.blit(surface, (0, 0))
     
-    pygame.display.set_caption(f"Commit 1: Render Test | FPS: {clock.get_fps():.2f}")
+    pygame.display.set_caption(f"Commit 2: Z-Morton Sorting | FPS: {clock.get_fps():.2f}")
     pygame.display.flip()
     clock.tick(60)
 

@@ -9,20 +9,19 @@
     #define EXPORT
 #endif
 
-// Simple Particle Struct (No padding needed yet)
+// Updated Struct with Morton Index
 typedef struct {
     float x, y, z;
     float vx, vy, vz;
     float mass;
+    uint64_t morton_index; // <-- Added for sorting
 } Particle;
 
-// Config Struct
 typedef struct {
     int count;
     float dt;
 } SimConfig;
 
-// Exported Functions
 EXPORT void init_simulation();
 EXPORT void step_simulation(Particle* particles, SimConfig config);
 EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels, int width, int height);
