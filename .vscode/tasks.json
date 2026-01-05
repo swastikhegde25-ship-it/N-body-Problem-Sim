@@ -1,0 +1,22 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Physics DLL",
+            "type": "shell",
+            "command": "cl",
+            "args": [
+                "/nologo",
+                "/O2",
+                "/openmp",
+                "/W4",
+                "/LD",
+                "/Fe:c_core/physics.dll",  // Output: c_core folder
+                "c_core/physics.c"         // Input: c_core folder
+            ],
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": ["$msCompile"],
+            "detail": "Compiles physics.c into a high-performance DLL"
+        }
+    ]
+}
