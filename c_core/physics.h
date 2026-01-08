@@ -9,17 +9,34 @@
     #define EXPORT
 #endif
 
-// Updated Struct with Morton Index
+#define MAX_NODES 400000 
+
 typedef struct {
     float x, y, z;
     float vx, vy, vz;
     float mass;
-    uint64_t morton_index; // <-- Added for sorting
+    uint64_t morton_index;
 } Particle;
 
+// Octree Node
 typedef struct {
-    int count;
+    float mass;
+    float x, y, z;          // Center of Mass
+    float min_x, max_x;     // Bounds
+    float min_y, max_y;
+    float min_z, max_z;
+    int children[8];
+    int first_particle;     // For collision tracking
+    int particle_count;
+} Node;
+
+typedef struct {
+    int particle_count;
     float dt;
+    float G;
+    float softening;
+    float world_size;
+    float theta;
 } SimConfig;
 
 EXPORT void init_simulation();
