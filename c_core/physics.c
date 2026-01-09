@@ -3,12 +3,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <omp.h> // <--- Required for Parallelism
 
-// Global Node Pool
 Node node_pool[MAX_NODES];
 int node_count = 0;
 
-// --- Morton Logic (Same as before) ---
+// --- Morton & Sort ---
 uint64_t expand_bits(uint32_t v) {
     uint64_t x = v & 0x1fffff;
     x = (x | x << 32) & 0x1f00000000ffff;
@@ -24,15 +24,12 @@ uint64_t morton_3d(float x, float y, float z, float min_c, float max_c) {
     float nx = (x - min_c) / range;
     float ny = (y - min_c) / range;
     float nz = (z - min_c) / range;
-    
     if(nx < 0) nx = 0; if(nx > 1) nx = 1;
     if(ny < 0) ny = 0; if(ny > 1) ny = 1;
     if(nz < 0) nz = 0; if(nz > 1) nz = 1;
-
     uint32_t ix = (uint32_t)(nx * 2097151.0f);
     uint32_t iy = (uint32_t)(ny * 2097151.0f);
     uint32_t iz = (uint32_t)(nz * 2097151.0f);
-
     return (expand_bits(ix) << 2) | (expand_bits(iy) << 1) | expand_bits(iz);
 }
 
@@ -44,10 +41,11 @@ int compare_particles(const void* a, const void* b) {
     return 0;
 }
 
-// --- Tree Logic ---
+// --- Tree ---
 void reset_tree() { node_count = 0; }
 
 int alloc_node() {
+    // Tree building is Serial
     int idx = node_count++;
     if (idx >= MAX_NODES) return -1;
     Node* n = &node_pool[idx];
@@ -85,7 +83,6 @@ void insert_node(int node_idx, int p_idx, Particle* p) {
         child->max_z = (octant & 4) ? n->max_z : mid_z;
         n->children[octant] = child_idx;
     }
-    
     if ((n->max_x - n->min_x) < 1.0f) return;
     insert_node(n->children[octant], p_idx, p);
 }
@@ -95,31 +92,24 @@ void finalize_nodes(int node_idx) {
     if (n->mass > 0) {
         n->x /= n->mass; n->y /= n->mass; n->z /= n->mass;
     }
-    for(int i=0; i<8; i++) {
-        if(n->children[i] != -1) finalize_nodes(n->children[i]);
-    }
+    for(int i=0; i<8; i++) if(n->children[i] != -1) finalize_nodes(n->children[i]);
 }
 
-// --- Physics Logic ---
+// --- Physics ---
 void calculate_force(Particle* p, int node_idx, SimConfig config, float* fx, float* fy, float* fz) {
     Node* n = &node_pool[node_idx];
-    
-    float dx = n->x - p->x;
-    float dy = n->y - p->y;
-    float dz = n->z - p->z;
+    float dx = n->x - p->x; float dy = n->y - p->y; float dz = n->z - p->z;
     float dist_sq = dx*dx + dy*dy + dz*dz;
     float dist = sqrtf(dist_sq + config.softening * config.softening);
     float width = n->max_x - n->min_x;
-    
+
     if (width / dist < config.theta || n->particle_count == 1) {
         if (dist_sq > 0.0001f) {
              float f = (config.G * p->mass * n->mass) / (dist_sq * dist);
              *fx += f * dx; *fy += f * dy; *fz += f * dz;
         }
     } else {
-        for(int i=0; i<8; i++) {
-            if(n->children[i] != -1) calculate_force(p, n->children[i], config, fx, fy, fz);
-        }
+        for(int i=0; i<8; i++) if(n->children[i] != -1) calculate_force(p, n->children[i], config, fx, fy, fz);
     }
 }
 
@@ -127,7 +117,6 @@ void resolve_collisions(Particle* particles, int p_idx, int node_idx) {
     Node* n = &node_pool[node_idx];
     Particle* p = &particles[p_idx];
 
-    // Simple bounds check to skip far nodes
     float dx = n->x - p->x; float dy = n->y - p->y; float dz = n->z - p->z;
     if ((dx*dx + dy*dy + dz*dz) > 400.0f && n->particle_count > 1) return;
 
@@ -139,56 +128,52 @@ void resolve_collisions(Particle* particles, int p_idx, int node_idx) {
             float pdz = particles[other].z - p->z;
             float dist_sq = pdx*pdx + pdy*pdy + pdz*pdz;
             
-            if (dist_sq < 16.0f && dist_sq > 0.0001f) { // Radius collision
+            if (dist_sq < 16.0f && dist_sq > 0.0001f) {
                 float dist = sqrtf(dist_sq);
                 float overlap = 0.5f * (4.0f - dist);
                 float nx = pdx / dist; float ny = pdy / dist; float nz = pdz / dist;
-                
                 p->x -= overlap * nx; p->y -= overlap * ny; p->z -= overlap * nz;
                 
                 float rvx = particles[other].vx - p->vx;
                 float rvy = particles[other].vy - p->vy;
                 float rvz = particles[other].vz - p->vz;
                 float vn = rvx*nx + rvy*ny + rvz*nz;
-                
                 if (vn < 0) {
-                    float j = -1.0f * vn; // Bounce
+                    float j = -1.0f * vn;
                     p->vx -= j * nx * 0.5f; p->vy -= j * ny * 0.5f; p->vz -= j * nz * 0.5f;
                 }
             }
         }
     } else {
-        for(int i=0; i<8; i++) {
-            if(n->children[i] != -1) resolve_collisions(particles, p_idx, n->children[i]);
-        }
+        for(int i=0; i<8; i++) if(n->children[i] != -1) resolve_collisions(particles, p_idx, n->children[i]);
     }
 }
 
-// --- Main Simulation Step (Serial) ---
 EXPORT void init_simulation() {}
 
 EXPORT void step_simulation(Particle* particles, SimConfig config) {
     reset_tree();
+    int i; 
 
-    // 1. Sort
-    for (int i = 0; i < config.particle_count; i++) {
+    // 1. Parallel Morton Calc
+    #pragma omp parallel for private(i)
+    for (i = 0; i < config.particle_count; i++) {
         particles[i].morton_index = morton_3d(particles[i].x, particles[i].y, particles[i].z, -config.world_size, config.world_size);
     }
     qsort(particles, config.particle_count, sizeof(Particle), compare_particles);
 
-    // 2. Build Tree
+    // 2. Serial Tree Build 
     int root = alloc_node();
     node_pool[root].min_x = -config.world_size; node_pool[root].max_x = config.world_size;
     node_pool[root].min_y = -config.world_size; node_pool[root].max_y = config.world_size;
     node_pool[root].min_z = -config.world_size; node_pool[root].max_z = config.world_size;
 
-    for (int i = 0; i < config.particle_count; i++) {
-        insert_node(root, i, &particles[i]);
-    }
+    for (i = 0; i < config.particle_count; i++) insert_node(root, i, &particles[i]);
     finalize_nodes(root);
 
-    // 3. Physics (Serial Loop)
-    for (int i = 0; i < config.particle_count; i++) {
+    // 3. Parallel Physics
+    #pragma omp parallel for private(i)
+    for (i = 0; i < config.particle_count; i++) {
         float fx = 0, fy = 0, fz = 0;
         calculate_force(&particles[i], root, config, &fx, &fy, &fz);
         
@@ -208,7 +193,7 @@ EXPORT void step_simulation(Particle* particles, SimConfig config) {
     }
 }
 
-// --- Render (Serial, Fixed Camera) ---
+// --- Parallel CPU Renderer ---
 void project_particle(float x, float y, float z, int* sx, int* sy, int sw, int sh) {
     float fov = 300.0f;
     float viewer_dist = 1000.0f;
@@ -220,17 +205,23 @@ void project_particle(float x, float y, float z, int* sx, int* sy, int sw, int s
 EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels, int width, int height) {
     memset(pixels, 0, width * height * 3);
     
-    // Serial Drawing
-    for (int i = 0; i < count; i++) {
+    int i;
+    // Parallel Drawing
+    #pragma omp parallel for private(i)
+    for (i = 0; i < count; i++) {
         int sx, sy;
         project_particle(particles[i].x, particles[i].y, particles[i].z, &sx, &sy, width, height);
         
         if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
             int index = (sy * width + sx) * 3;
-            // Accumulate color (Density effect)
-            if (pixels[index+2] < 220) pixels[index+2] += 20; // R
-            if (pixels[index+1] < 150) pixels[index+1] += 10; // G
-            pixels[index] += 5; // B
+            
+            // ATOMIC operations prevent race conditions when threads write to same pixel
+            #pragma omp atomic
+            pixels[index+2] += 20; // R
+            #pragma omp atomic
+            pixels[index+1] += 10; // G
+            #pragma omp atomic
+            pixels[index] += 5;    // B
         }
     }
 }
