@@ -1,19 +1,19 @@
 # N-Body Gravity Simulation
 
 A high-performance gravity simulation capable of rendering **100k + particles** in real-time. This project uses a **Hybrid Architecture**:
-C is used for heavy physics calculations, and Python/GPU is used for visualization.
+C is used for heavy physics calculations, and Python is used for visualization.
 
 ##  Features & Technical Details
 
 *   **Hybrid Engine:** Python controls the simulation, C calculates the math.
-*   **Barnes-Hut Algorithm:** Optimized physics using an Octree (N log N complexity).    ( planned )
-*   **Parallel Processing:** Uses OpenMP to run physics on all CPU cores.                ( planned )
-*   **Interactive:** 360-degree camera control with Zoom and Rotation.                   ( planned )
-*   **GPU Rendering:** Uses ModernGL (OpenGL) and use .                                  ( planned )
-*   **Using CUDA to Simulate:** LBVH, Radix Sort, Gaussian splatting                     ( planned )
+*   **Barnes-Hut Algorithm:** Optimized physics using an Octree (N log N complexity).    
+*   **Parallel Processing:** Uses OpenMP to run physics on all CPU cores.                
+*   **Interactive:** 360-degree camera control with Zoom and Rotation.                   
+*   **GPU Rendering:** Uses ModernGL (OpenGL) and use ...............( planned )
+*   **Using CUDA to Simulate:** LBVH, Radix Sort, Gaussian splatting.( planned )
 
 
-##  Controls ( planned )
+##  Controls
 
 *   **Spacebar:** Pause / Resume Simulation
 *   **Left Click + Drag:** Rotate Camera (Pitch)
