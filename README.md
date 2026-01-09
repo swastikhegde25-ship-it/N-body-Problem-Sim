@@ -9,7 +9,7 @@ C is used for heavy physics calculations, and Python is used for visualization.
 *   **Barnes-Hut Algorithm:** Optimized physics using an Octree (N log N complexity).    
 *   **Parallel Processing:** Uses OpenMP to run physics on all CPU cores.                
 *   **Interactive:** 360-degree camera control with Zoom and Rotation.                   
-*   **GPU Rendering:** Uses ModernGL (OpenGL) and use ...............( planned )
+*   **GPU Rendering:** Uses ModernGL (OpenGL)........ ...............( planned )
 *   **Using CUDA to Simulate:** LBVH, Radix Sort, Gaussian splatting.( planned )
 
 
