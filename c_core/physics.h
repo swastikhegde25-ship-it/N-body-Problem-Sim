@@ -1,5 +1,4 @@
-#ifndef PHYSICS_H
-#define PHYSICS_H
+#pragma once
 
 #include <stdint.h>
 
@@ -11,22 +10,23 @@
 
 #define MAX_NODES 400000 
 
+// --- Structures ---
 typedef struct {
     float x, y, z;
     float vx, vy, vz;
     float mass;
+    float padding; // Keeping padding for alignment safety
     uint64_t morton_index;
 } Particle;
 
-// Octree Node
 typedef struct {
     float mass;
-    float x, y, z;          // Center of Mass
-    float min_x, max_x;     // Bounds
+    float x, y, z;
+    float min_x, max_x;
     float min_y, max_y;
     float min_z, max_z;
     int children[8];
-    int first_particle;     // For collision tracking
+    int first_particle;
     int particle_count;
 } Node;
 
@@ -39,8 +39,11 @@ typedef struct {
     float theta;
 } SimConfig;
 
+// --- Functions ---
 EXPORT void init_simulation();
 EXPORT void step_simulation(Particle* particles, SimConfig config);
-EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels, int width, int height);
 
-#endif
+// accepts a 3x3 Rotation Matrix (array of 9 floats)
+EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels, 
+                       int width, int height, 
+                       float* rot_matrix, float zoom_factor);
