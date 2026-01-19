@@ -174,11 +174,26 @@ EXPORT void step_simulation(Particle* particles, SimConfig config) {
     for (i = 0; i < config.particle_count; i++) {
         float fx = 0, fy = 0, fz = 0;
         calculate_force(&particles[i], root, config, &fx, &fy, &fz);
+        
         float ax = fx / particles[i].mass;
         float ay = fy / particles[i].mass;
         float az = fz / particles[i].mass;
-        particles[i].vx += ax * config.dt; particles[i].vy += ay * config.dt; particles[i].vz += az * config.dt;
-        particles[i].x += particles[i].vx * config.dt; particles[i].y += particles[i].vy * config.dt; particles[i].z += particles[i].vz * config.dt;
+
+        // Leapfrog: Kick (v half-step)
+        particles[i].vx += ax * (config.dt * 0.5f);
+        particles[i].vy += ay * (config.dt * 0.5f);
+        particles[i].vz += az * (config.dt * 0.5f);
+
+        // Leapfrog: Drift (x full-step)
+        particles[i].x += particles[i].vx * config.dt;
+        particles[i].y += particles[i].vy * config.dt;
+        particles[i].z += particles[i].vz * config.dt;
+
+        // Leapfrog: Kick (v half-step) to complete the step
+        particles[i].vx += ax * (config.dt * 0.5f);
+        particles[i].vy += ay * (config.dt * 0.5f);
+        particles[i].vz += az * (config.dt * 0.5f);
+
         resolve_collisions(particles, i, root);
     }
 }
@@ -189,15 +204,10 @@ EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels,
                        float* rot_matrix, float zoom_factor) {
     memset(pixels, 0, width * height * 3);
 
-    // Extract matrix for readability 
-    // R00 R01 R02
-    // R10 R11 R12
-    // R20 R21 R22
     float r00 = rot_matrix[0]; float r01 = rot_matrix[1]; float r02 = rot_matrix[2];
     float r10 = rot_matrix[3]; float r11 = rot_matrix[4]; float r12 = rot_matrix[5];
     float r20 = rot_matrix[6]; float r21 = rot_matrix[7]; float r22 = rot_matrix[8];
 
-    // Dynamic Brightness
     float brightness_scale = zoom_factor / 300.0f;
     if (brightness_scale < 0.5f) brightness_scale = 0.5f;
     int add_b = (int)(5 * brightness_scale);
@@ -212,12 +222,10 @@ EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels,
         float y = particles[i].y;
         float z = particles[i].z;
 
-        // Apply 3x3 Rotation Matrix
         float rx = x * r00 + y * r01 + z * r02;
         float ry = x * r10 + y * r11 + z * r12;
         float rz = x * r20 + y * r21 + z * r22;
 
-        // Project
         float dist = 1000.0f; 
         float final_z = dist + rz;
 
