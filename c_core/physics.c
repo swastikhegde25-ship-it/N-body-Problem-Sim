@@ -152,10 +152,12 @@ void resolve_collisions(Particle* particles, int p_idx, int node_idx) {
 // --- Main Loop ---
 EXPORT void init_simulation() {}
 
-EXPORT void step_simulation(Particle* particles, SimConfig config) {
-    reset_tree();
+void leapfrog_step(Particle* particles, SimConfig config)
+{
     int i; 
 
+    // --- STAGE 1: Build Tree (t) and First Kick + Drift ---
+    reset_tree();
     #pragma omp parallel for private(i)
     for (i = 0; i < config.particle_count; i++) {
         particles[i].morton_index = morton_3d(particles[i].x, particles[i].y, particles[i].z, -config.world_size, config.world_size);
@@ -179,23 +181,54 @@ EXPORT void step_simulation(Particle* particles, SimConfig config) {
         float ay = fy / particles[i].mass;
         float az = fz / particles[i].mass;
 
-        // Leapfrog: Kick (v half-step)
+        // Leapfrog: Kick 1
         particles[i].vx += ax * (config.dt * 0.5f);
         particles[i].vy += ay * (config.dt * 0.5f);
         particles[i].vz += az * (config.dt * 0.5f);
 
-        // Leapfrog: Drift (x full-step)
+        // Leapfrog: Drift 
         particles[i].x += particles[i].vx * config.dt;
         particles[i].y += particles[i].vy * config.dt;
         particles[i].z += particles[i].vz * config.dt;
+    }
 
-        // Leapfrog: Kick (v half-step) to complete the step
+    // --- STAGE 2: Rebuild Tree (t+dt) and Second Kick ---
+    reset_tree();
+    #pragma omp parallel for private(i)
+    for (i = 0; i < config.particle_count; i++) {
+        particles[i].morton_index = morton_3d(particles[i].x, particles[i].y, particles[i].z, -config.world_size, config.world_size);
+    }
+    qsort(particles, config.particle_count, sizeof(Particle), compare_particles);
+
+    root = alloc_node();
+    node_pool[root].min_x = -config.world_size; node_pool[root].max_x = config.world_size;
+    node_pool[root].min_y = -config.world_size; node_pool[root].max_y = config.world_size;
+    node_pool[root].min_z = -config.world_size; node_pool[root].max_z = config.world_size;
+
+    for (i = 0; i < config.particle_count; i++) insert_node(root, i, &particles[i]);
+    finalize_nodes(root);
+
+    #pragma omp parallel for private(i)
+    for (i = 0; i < config.particle_count; i++) {
+        // Calculate Force based on NEW positions
+        float fx = 0, fy = 0, fz = 0;
+        calculate_force(&particles[i], root, config, &fx, &fy, &fz);
+        
+        float ax = fx / particles[i].mass;
+        float ay = fy / particles[i].mass;
+        float az = fz / particles[i].mass;
+
+        // Leapfrog: Kick 2
         particles[i].vx += ax * (config.dt * 0.5f);
         particles[i].vy += ay * (config.dt * 0.5f);
         particles[i].vz += az * (config.dt * 0.5f);
 
         resolve_collisions(particles, i, root);
     }
+}
+
+EXPORT void step_simulation(Particle* particles, SimConfig config) {
+    leapfrog_step(particles, config);
 }
 
 // --- MATRIX RENDERER (CAD Like) ---

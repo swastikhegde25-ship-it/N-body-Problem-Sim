@@ -140,7 +140,9 @@ while running:
     screen.blit(surface, (0, 0))
     
     state = "PAUSED" if paused else "RUNNING"
-    pygame.display.set_caption(f"Sim | {state} | Particles: {NUM_PARTICLES}")
+    # adding a fps counter to the window title
+    fps = clock.get_fps()
+    pygame.display.set_caption(f"Sim | {state} | Particles: {NUM_PARTICLES} | FPS: {fps:.2f}")
 
     pygame.display.flip()
     clock.tick(60)
