@@ -9,6 +9,9 @@
 but all the code logic, structure, and implementation is my own work.
 Took help for some parts of the logic from stackoverflow */
 
+#undef MAX_NODES
+#define MAX_NODES 2000000
+
 Node node_pool[MAX_NODES];
 int node_count = 0;
 
@@ -75,7 +78,7 @@ void insert_node(int node_idx, int p_idx, Particle* p) {
 
     if (n->children[octant] == -1) {
         int child_idx = alloc_node();
-        if(child_idx == -1) return;
+        if(child_idx == -1) return; // Pool full, child not created. Mass stays in parent.
         Node* child = &node_pool[child_idx];
         child->min_x = (octant & 1) ? mid_x : n->min_x;
         child->max_x = (octant & 1) ? n->max_x : mid_x;
@@ -85,7 +88,8 @@ void insert_node(int node_idx, int p_idx, Particle* p) {
         child->max_z = (octant & 4) ? n->max_z : mid_z;
         n->children[octant] = child_idx;
     }
-    if ((n->max_x - n->min_x) < 1.0f) return;
+    // Limit depth to prevent stack overflow/infinite recursion on exact overlaps
+    if ((n->max_x - n->min_x) < 0.5f) return;
     insert_node(n->children[octant], p_idx, p);
 }
 
@@ -104,13 +108,27 @@ void calculate_force(Particle* p, int node_idx, SimConfig config, float* fx, flo
     float dist = sqrtf(dist_sq + config.softening * config.softening);
     float width = n->max_x - n->min_x;
 
+    // Condition to use this node as an approximation
     if (width / dist < config.theta || n->particle_count == 1) {
         if (dist_sq > 0.0001f) {
              float f = (config.G * p->mass * n->mass) / (dist_sq * dist);
              *fx += f * dx; *fy += f * dy; *fz += f * dz;
         }
     } else {
-        for(int i=0; i<8; i++) if(n->children[i] != -1) calculate_force(p, n->children[i], config, fx, fy, fz);
+        // Must recurse. 
+        int recursed_any = 0;
+        for(int i=0; i<8; i++) {
+            if(n->children[i] != -1) {
+                calculate_force(p, n->children[i], config, fx, fy, fz);
+                recursed_any = 1;
+            }
+        }
+         
+        // accumulated mass. Otherwise, this mass is ignored (gravity disappears).
+        if (!recursed_any && dist_sq > 0.0001f) {
+             float f = (config.G * p->mass * n->mass) / (dist_sq * dist);
+             *fx += f * dx; *fy += f * dy; *fz += f * dz;
+        }
     }
 }
 
@@ -149,14 +167,71 @@ void resolve_collisions(Particle* particles, int p_idx, int node_idx) {
     }
 }
 
+// --- Adaptive Logic ---
+void assign_timesteps(Particle* particles, SimConfig config) {
+    int i;
+    float eta = 0.5f; 
+    
+    #pragma omp parallel for private(i)
+    for (i = 0; i < config.particle_count; i++) {
+        float acc2 = particles[i].ax * particles[i].ax + 
+                     particles[i].ay * particles[i].ay + 
+                     particles[i].az * particles[i].az;
+        
+        float acc = sqrtf(acc2);
+        if (acc < 1e-6f) acc = 1e-6f;
+
+        float ideal_dt = eta * sqrtf(config.adaptive_err / acc);
+        if (ideal_dt > config.dt) ideal_dt = config.dt;
+
+        float ratio = config.dt / ideal_dt;
+        int level = (int)ceilf(log2f(ratio));
+        
+        if (level < 0) level = 0;
+        if (level > config.max_level) level = config.max_level;
+
+        particles[i].level = level;
+        particles[i].current_dt = config.dt / (float)(1 << level);
+    }
+}
+
+// --- LEAPFROG FUNCTION ---
+void leapfrog_active_step(Particle* particles, int p_idx, float dt, int root_idx, SimConfig config) {
+    Particle* p = &particles[p_idx];
+
+    // Kick 1
+    p->vx += p->ax * (dt * 0.5f);
+    p->vy += p->ay * (dt * 0.5f);
+    p->vz += p->az * (dt * 0.5f);
+
+    // Drift
+    p->x += p->vx * dt;
+    p->y += p->vy * dt;
+    p->z += p->vz * dt;
+
+    // Force Calculation
+    float fx = 0, fy = 0, fz = 0;
+    calculate_force(p, root_idx, config, &fx, &fy, &fz);
+
+    p->ax = fx / p->mass;
+    p->ay = fy / p->mass;
+    p->az = fz / p->mass;
+
+    // Kick 2
+    p->vx += p->ax * (dt * 0.5f);
+    p->vy += p->ay * (dt * 0.5f);
+    p->vz += p->az * (dt * 0.5f);
+
+    resolve_collisions(particles, p_idx, root_idx);
+}
+
 // --- Main Loop ---
 EXPORT void init_simulation() {}
 
-void leapfrog_step(Particle* particles, SimConfig config)
-{
+EXPORT void step_simulation(Particle* particles, SimConfig config) {
     int i; 
 
-    // --- STAGE 1: Build Tree (t) and First Kick + Drift ---
+    // Build Tree (Global Sync at t=0) ---
     reset_tree();
     #pragma omp parallel for private(i)
     for (i = 0; i < config.particle_count; i++) {
@@ -172,63 +247,23 @@ void leapfrog_step(Particle* particles, SimConfig config)
     for (i = 0; i < config.particle_count; i++) insert_node(root, i, &particles[i]);
     finalize_nodes(root);
 
-    #pragma omp parallel for private(i)
-    for (i = 0; i < config.particle_count; i++) {
-        float fx = 0, fy = 0, fz = 0;
-        calculate_force(&particles[i], root, config, &fx, &fy, &fz);
-        
-        float ax = fx / particles[i].mass;
-        float ay = fy / particles[i].mass;
-        float az = fz / particles[i].mass;
+    // Assign Timesteps ---
+    assign_timesteps(particles, config);
 
-        // Leapfrog: Kick 1
-        particles[i].vx += ax * (config.dt * 0.5f);
-        particles[i].vy += ay * (config.dt * 0.5f);
-        particles[i].vz += az * (config.dt * 0.5f);
+    // Block Substep Execution ---
+    int max_substeps = 1 << config.max_level;
 
-        // Leapfrog: Drift 
-        particles[i].x += particles[i].vx * config.dt;
-        particles[i].y += particles[i].vy * config.dt;
-        particles[i].z += particles[i].vz * config.dt;
+    for (int s = 0; s < max_substeps; s++) {
+        #pragma omp parallel for private(i)
+        for (i = 0; i < config.particle_count; i++) {
+            // Level L runs every (max_substeps / 2^L) ticks
+            int interval = 1 << (config.max_level - particles[i].level);
+            
+            if (s % interval == 0) {
+                leapfrog_active_step(particles, i, particles[i].current_dt, root, config);
+            }
+        }
     }
-
-    // --- STAGE 2: Rebuild Tree (t+dt) and Second Kick ---
-    reset_tree();
-    #pragma omp parallel for private(i)
-    for (i = 0; i < config.particle_count; i++) {
-        particles[i].morton_index = morton_3d(particles[i].x, particles[i].y, particles[i].z, -config.world_size, config.world_size);
-    }
-    qsort(particles, config.particle_count, sizeof(Particle), compare_particles);
-
-    root = alloc_node();
-    node_pool[root].min_x = -config.world_size; node_pool[root].max_x = config.world_size;
-    node_pool[root].min_y = -config.world_size; node_pool[root].max_y = config.world_size;
-    node_pool[root].min_z = -config.world_size; node_pool[root].max_z = config.world_size;
-
-    for (i = 0; i < config.particle_count; i++) insert_node(root, i, &particles[i]);
-    finalize_nodes(root);
-
-    #pragma omp parallel for private(i)
-    for (i = 0; i < config.particle_count; i++) {
-        // Calculate Force based on NEW positions
-        float fx = 0, fy = 0, fz = 0;
-        calculate_force(&particles[i], root, config, &fx, &fy, &fz);
-        
-        float ax = fx / particles[i].mass;
-        float ay = fy / particles[i].mass;
-        float az = fz / particles[i].mass;
-
-        // Leapfrog: Kick 2
-        particles[i].vx += ax * (config.dt * 0.5f);
-        particles[i].vy += ay * (config.dt * 0.5f);
-        particles[i].vz += az * (config.dt * 0.5f);
-
-        resolve_collisions(particles, i, root);
-    }
-}
-
-EXPORT void step_simulation(Particle* particles, SimConfig config) {
-    leapfrog_step(particles, config);
 }
 
 // --- MATRIX RENDERER (CAD Like) ---

@@ -14,8 +14,14 @@
 typedef struct {
     float x, y, z;
     float vx, vy, vz;
+    // Persist acceleration for Leapfrog (Kick-Drift-Kick)
+    float ax, ay, az;
     float mass;
-    float padding; // Keeping padding for alignment safety
+    
+    // Adaptive Timestep Data
+    int level;          // Hierarchy level (0 = slow, max = fast)
+    float current_dt;   // Cached dt for this particle
+
     uint64_t morton_index;
 } Particle;
 
@@ -37,6 +43,10 @@ typedef struct {
     float softening;
     float world_size;
     float theta;
+    
+    // Adaptive Settings
+    int max_level;      // e.g., 4 (makes min_dt = dt / 16)
+    float adaptive_err; // Epsilon for timestep criterion
 } SimConfig;
 
 // --- Functions ---

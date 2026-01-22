@@ -13,8 +13,10 @@ ffi.cdef("""
     typedef struct {
         float x, y, z;
         float vx, vy, vz;
+        float ax, ay, az;
         float mass;
-        float padding;
+        int level;
+        float current_dt;
         uint64_t morton_index;
     } Particle;
 
@@ -25,6 +27,8 @@ ffi.cdef("""
         float softening;
         float world_size;
         float theta;
+        int max_level;
+        float adaptive_err;
     } SimConfig;
 
     void init_simulation();
@@ -48,8 +52,10 @@ NUM_PARTICLES = 100000
 particle_dtype = np.dtype([
     ('x', 'f4'), ('y', 'f4'), ('z', 'f4'),
     ('vx', 'f4'), ('vy', 'f4'), ('vz', 'f4'),
+    ('ax', 'f4'), ('ay', 'f4'), ('az', 'f4'),
     ('mass', 'f4'),
-    ('padding', 'f4'),
+    ('level', 'i4'),
+    ('current_dt', 'f4'),
     ('morton', 'u8')
 ], align=True)
 
@@ -73,6 +79,10 @@ def create_sphere(start, count, cx, cy, cz, r, mass, vx, vy, vz):
     particles_np['vy'][start:end] = vy
     particles_np['vz'][start:end] = vz
     particles_np['mass'][start:end] = mass / count
+    # Initialize acc to 0
+    particles_np['ax'][start:end] = 0
+    particles_np['ay'][start:end] = 0
+    particles_np['az'][start:end] = 0
 
 print("Generating Planets...")
 create_sphere(0, NUM_PARTICLES, 0, 0, 0, 200, 100000, 0, 0, 0)
@@ -81,11 +91,14 @@ create_sphere(0, NUM_PARTICLES, 0, 0, 0, 200, 100000, 0, 0, 0)
 
 config = ffi.new("SimConfig*")
 config.particle_count = NUM_PARTICLES
-config.dt = 0.05
+config.dt = 0.1
 config.G = 1.0
 config.softening = 2.0
 config.world_size = 4000.0
 config.theta = 0.5
+# Block Adaptive Config
+config.max_level = 4       # Max hierarchy depth 
+config.adaptive_err = 10.0 # Control factor for dt calculation
 
 lib.init_simulation()
 
