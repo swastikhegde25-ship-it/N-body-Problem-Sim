@@ -8,10 +8,9 @@ C is used for heavy physics calculations, and Python is used for visualization.
 *   **Hybrid Engine:** Python controls the simulation, C calculates the math.
 *   **Barnes-Hut Algorithm:** Optimized physics using an Octree (N log N complexity).    
 *   **Parallel Processing:** Uses OpenMP to run physics on all CPU cores.                
-*   **Interactive:** 360-degree camera control with Zoom and Rotation.                   
-*   **GPU Rendering:** Uses ModernGL (OpenGL)........ ...............( planned )
-*   **Using CUDA to Simulate:** LBVH, Radix Sort, Gaussian splatting.( planned )
-
+*   **Hierarchy Adaptive Timestep:** "dt" changes according to particle acceleration.                  
+*   **Interactive:** 360-degree camera control with Zoom and Rotation.
+*   **GPU Rendering:** Uses moderngl to render particle and reduce CPU load.
 
 ##  Controls
 
