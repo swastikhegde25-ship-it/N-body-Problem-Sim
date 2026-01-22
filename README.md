@@ -10,7 +10,6 @@ C is used for heavy physics calculations, and Python is used for visualization.
 *   **Parallel Processing:** Uses OpenMP to run physics on all CPU cores.                
 *   **Hierarchy Adaptive Timestep:** "dt" changes according to particle acceleration.                  
 *   **Interactive:** 360-degree camera control with Zoom and Rotation.
-*   **GPU Rendering:** Uses moderngl to render particle and reduce CPU load.
 
 ##  Controls
 
