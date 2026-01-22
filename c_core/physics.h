@@ -49,9 +49,16 @@ typedef struct {
     float adaptive_err; // Epsilon for timestep criterion
 } SimConfig;
 
+typedef struct {
+    double total_energy;
+    double kinetic;
+    double potential;
+} EnergyStats;
+
 // --- Functions ---
 EXPORT void init_simulation();
 EXPORT void step_simulation(Particle* particles, SimConfig config);
+EXPORT void get_energy_stats(Particle* particles, SimConfig config, EnergyStats* stats);
 
 // accepts a 3x3 Rotation Matrix (array of 9 floats)
 EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels, 

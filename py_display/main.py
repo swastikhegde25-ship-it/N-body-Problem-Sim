@@ -3,6 +3,8 @@ import numpy as np
 import cffi
 import os
 import math
+import matplotlib.pyplot as plt
+from collections import deque
 
 # used github copilot inline code suggestion to speed up development 
 # but all the code logic, structure, and implementation is my own work.
@@ -30,9 +32,16 @@ ffi.cdef("""
         int max_level;
         float adaptive_err;
     } SimConfig;
+         
+    typedef struct {
+        double total_energy;
+        double kinetic;
+        double potential;
+    } EnergyStats;
 
     void init_simulation();
     void step_simulation(Particle* particles, SimConfig config);
+    void get_energy_stats(Particle* particles, SimConfig config, EnergyStats* stats);
     
     // UPDATED: Now takes a matrix pointer
     void render_cpu(Particle* particles, int count, uint8_t* pixels, 
@@ -108,6 +117,25 @@ clock = pygame.time.Clock()
 pixel_buffer = np.zeros((WIDTH * HEIGHT * 3), dtype=np.uint8)
 pixel_ptr = ffi.cast("uint8_t*", pixel_buffer.ctypes.data)
 
+# --------------- Graph Setup ----------------
+plt.ion()
+fig, ax = plt.subplots(figsize=(5, 3))
+history_len = 200
+t_data = deque(maxlen=history_len)
+ke_data = deque(maxlen=history_len)
+pe_data = deque(maxlen=history_len)
+te_data = deque(maxlen=history_len)
+
+line_ke, = ax.plot([], [], label='KE', color='r')
+line_pe, = ax.plot([], [], label='PE', color='b')
+line_te, = ax.plot([], [], label='Total', color='g')
+ax.legend()
+ax.set_title("System Energy")
+ax.grid(True, alpha=0.3)
+
+energy_stats = ffi.new("EnergyStats*")
+frame_count = 0
+
 # --- ROTATION MATRIX LOGIC ---
 # Identity Matrix (No rotation)
 # [ R00 R01 R02 ]
@@ -140,6 +168,24 @@ running = True
 while running:
     if not paused:
         lib.step_simulation(particles_ptr, config[0])
+        
+        # Update Graph every 10 frames to save FPS
+        if frame_count % 10 == 0:
+            lib.get_energy_stats(particles_ptr, config[0], energy_stats)
+            t_data.append(frame_count)
+            ke_data.append(energy_stats.kinetic)
+            pe_data.append(energy_stats.potential)
+            te_data.append(energy_stats.total_energy)
+            
+            line_ke.set_data(t_data, ke_data)
+            line_pe.set_data(t_data, pe_data)
+            line_te.set_data(t_data, te_data)
+            
+            ax.relim()
+            ax.autoscale_view()
+            plt.pause(0.001)
+
+    frame_count += 1
 
     # Pass the matrix to C
     # flatten() converts 3x3 to 9 floats
