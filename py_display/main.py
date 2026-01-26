@@ -43,10 +43,11 @@ ffi.cdef("""
     void step_simulation(Particle* particles, SimConfig config);
     void get_energy_stats(Particle* particles, SimConfig config, EnergyStats* stats);
     
-    // UPDATED: Now takes a matrix pointer
+    // UPDATED: Now takes a matrix pointer and offsets
     void render_cpu(Particle* particles, int count, uint8_t* pixels, 
                     int width, int height, 
-                    float* rot_matrix, float zoom_factor);
+                    float* rot_matrix, float zoom_factor, 
+                    float offset_x, float offset_y);
 """)
 
 dll_path = os.path.join(os.path.dirname(__file__), "..", "c_core", "physics.dll")
@@ -152,14 +153,16 @@ def rotate_y(angle):
     return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]], dtype=np.float32)
 
 cam_zoom = 300.0
+cam_offset_x = 0.0
+cam_offset_y = 0.0
 last_mouse_pos = (0, 0)
 dragging_left = False
-dragging_right = False
+dragging_middle = False
 paused = False
 
 print("Controls:")
-print("  [Left Drag]   Pitch (Vertical Axis Rotation)")
-print("  [Right Drag]  Yaw   (Horizontal Axis Rotation)")
+print("  [Left Drag]   Rotate (Pitch & Yaw)")
+print("  [Middle Drag] Pan (Drag on plane)")
 print("  [Scroll]      Zoom")
 print("  [Space]       Pause")
 print("  [R]           Reset")
@@ -192,7 +195,7 @@ while running:
     rot_ptr = ffi.cast("float*", rotation_matrix.ctypes.data)
     
     lib.render_cpu(particles_ptr, NUM_PARTICLES, pixel_ptr, WIDTH, HEIGHT, 
-                   rot_ptr, cam_zoom)
+                   rot_ptr, cam_zoom, cam_offset_x, cam_offset_y)
     
     surface_array = pixel_buffer.reshape((HEIGHT, WIDTH, 3))
     surface = pygame.surfarray.make_surface(surface_array.swapaxes(0, 1))
@@ -215,20 +218,22 @@ while running:
             if event.key == pygame.K_r: 
                 rotation_matrix = np.eye(3, dtype=np.float32)
                 cam_zoom = 300.0
+                cam_offset_x = 0.0
+                cam_offset_y = 0.0
                 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1: # Left Click
                 dragging_left = True
                 last_mouse_pos = event.pos
-            elif event.button == 3: # Right Click
-                dragging_right = True
+            elif event.button == 2: # Middle Click (Scroll Wheel Click)
+                dragging_middle = True
                 last_mouse_pos = event.pos
             elif event.button == 4: cam_zoom *= 1.1
             elif event.button == 5: cam_zoom /= 1.1
 
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1: dragging_left = False
-            if event.button == 3: dragging_right = False
+            if event.button == 2: dragging_middle = False
 
         elif event.type == pygame.MOUSEMOTION:
             dx = event.pos[0] - last_mouse_pos[0]
@@ -237,13 +242,20 @@ while running:
             
             sensitivity = 0.005
             
-            # Left Click: Vertical Mouse Movement -> Rotate around X axis (Pitch)
+            # Left Click: Vertical/Horizontal Mouse Movement -> Rotate Pitch & Yaw
             if dragging_left:
-                rot = rotate_x(dy * sensitivity)
-                # Apply rotation relative to current view
-                rotation_matrix = np.dot(rot, rotation_matrix)
+                # Pitch (X-axis rotation)
+                rot_x = rotate_x(dy * sensitivity)
+                rotation_matrix = np.dot(rot_x, rotation_matrix)
                 
-            # Right Click: Horizontal Mouse Movement -> Rotate around Y axis (Yaw)
-            if dragging_right:
-                rot = rotate_y(dx * sensitivity)
-                rotation_matrix = np.dot(rot, rotation_matrix)
+                # Yaw (Y-axis rotation)
+                rot_y = rotate_y(-dx * sensitivity)
+                rotation_matrix = np.dot(rot_y, rotation_matrix)
+                
+            # Middle Click: Pan the camera planet
+            if dragging_middle:
+                current_scale = cam_zoom / 1000.0
+                if current_scale < 0.001: current_scale = 0.001
+                
+                cam_offset_x += dx / current_scale
+                cam_offset_y += dy / current_scale

@@ -324,7 +324,8 @@ EXPORT void get_energy_stats(Particle* particles, SimConfig config, EnergyStats*
 // --- MATRIX RENDERER (CAD Like) ---
 EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels, 
                        int width, int height, 
-                       float* rot_matrix, float zoom_factor) {
+                       float* rot_matrix, float zoom_factor, 
+                       float offset_x, float offset_y) {
     memset(pixels, 0, width * height * 3);
 
     float r00 = rot_matrix[0]; float r01 = rot_matrix[1]; float r02 = rot_matrix[2];
@@ -355,8 +356,9 @@ EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels,
         if (final_z < 10.0f) continue;
 
         float scale = zoom_factor / final_z;
-        int sx = (int)(rx * scale + (width / 2));
-        int sy = (int)(ry * scale + (height / 2));
+        // Apply offset to World Coordinates (before scale) to shift the Zoom Center
+        int sx = (int)((rx + offset_x) * scale + (width / 2));
+        int sy = (int)((ry + offset_y) * scale + (height / 2));
 
         if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
             int index = (sy * width + sx) * 3;

@@ -14,9 +14,9 @@ C is used for heavy physics calculations, and Python is used for visualization.
 ##  Controls
 
 *   **Spacebar:** Pause / Resume Simulation
-*   **Left Click + Drag:** Rotate Camera (Pitch)
-*   **Right Click + Drag:** Rotate Camera (Yaw)
-*   **Scroll Wheel:** Zoom In / Out
+*   **Left Click + Drag:** Rotate Camera (Pitch) & Rotate Camera (Yaw)
+*   **Scroll Wheel:**  Zoom In / Out  
+*   **Scroll Wheel Click:** Pan (Drag on plane) 
 *   **R Key:** Reset Camera
 *   **ESC:** Quit
 

@@ -63,4 +63,5 @@ EXPORT void get_energy_stats(Particle* particles, SimConfig config, EnergyStats*
 // accepts a 3x3 Rotation Matrix (array of 9 floats)
 EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels, 
                        int width, int height, 
-                       float* rot_matrix, float zoom_factor);
+                       float* rot_matrix, float zoom_factor, 
+                       float offset_x, float offset_y);
