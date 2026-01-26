@@ -60,8 +60,8 @@ EXPORT void init_simulation();
 EXPORT void step_simulation(Particle* particles, SimConfig config);
 EXPORT void get_energy_stats(Particle* particles, SimConfig config, EnergyStats* stats);
 
-// accepts a 3x3 Rotation Matrix (array of 9 floats)
+// UPDATED: Now takes 3D target coordinates (tx, ty, tz)
 EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels, 
                        int width, int height, 
                        float* rot_matrix, float zoom_factor, 
-                       float offset_x, float offset_y);
+                       float tx, float ty, float tz);

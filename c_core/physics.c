@@ -325,7 +325,7 @@ EXPORT void get_energy_stats(Particle* particles, SimConfig config, EnergyStats*
 EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels, 
                        int width, int height, 
                        float* rot_matrix, float zoom_factor, 
-                       float offset_x, float offset_y) {
+                       float tx, float ty, float tz) {
     memset(pixels, 0, width * height * 3);
 
     float r00 = rot_matrix[0]; float r01 = rot_matrix[1]; float r02 = rot_matrix[2];
@@ -342,13 +342,15 @@ EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels,
     int i;
     #pragma omp parallel for private(i)
     for (i = 0; i < count; i++) {
-        float x = particles[i].x;
-        float y = particles[i].y;
-        float z = particles[i].z;
+        // Shift particle coordinate by Target (Pivot) position first
+        float dx = particles[i].x - tx;
+        float dy = particles[i].y - ty;
+        float dz = particles[i].z - tz;
 
-        float rx = x * r00 + y * r01 + z * r02;
-        float ry = x * r10 + y * r11 + z * r12;
-        float rz = x * r20 + y * r21 + z * r22;
+        // Apply Rotation to the shifted coordinates
+        float rx = dx * r00 + dy * r01 + dz * r02;
+        float ry = dx * r10 + dy * r11 + dz * r12;
+        float rz = dx * r20 + dy * r21 + dz * r22;
 
         float dist = 1000.0f; 
         float final_z = dist + rz;
@@ -356,9 +358,9 @@ EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels,
         if (final_z < 10.0f) continue;
 
         float scale = zoom_factor / final_z;
-        // Apply offset to World Coordinates (before scale) to shift the Zoom Center
-        int sx = (int)((rx + offset_x) * scale + (width / 2));
-        int sy = (int)((ry + offset_y) * scale + (height / 2));
+        // Project. Since we already subtracted target, (0,0,0) is center screen.
+        int sx = (int)(rx * scale + (width / 2));
+        int sy = (int)(ry * scale + (height / 2));
 
         if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
             int index = (sy * width + sx) * 3;

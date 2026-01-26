@@ -43,11 +43,10 @@ ffi.cdef("""
     void step_simulation(Particle* particles, SimConfig config);
     void get_energy_stats(Particle* particles, SimConfig config, EnergyStats* stats);
     
-    // UPDATED: Now takes a matrix pointer and offsets
     void render_cpu(Particle* particles, int count, uint8_t* pixels, 
                     int width, int height, 
                     float* rot_matrix, float zoom_factor, 
-                    float offset_x, float offset_y);
+                    float tx, float ty, float tz);
 """)
 
 dll_path = os.path.join(os.path.dirname(__file__), "..", "c_core", "physics.dll")
@@ -135,13 +134,10 @@ ax.set_title("System Energy")
 ax.grid(True, alpha=0.3)
 
 energy_stats = ffi.new("EnergyStats*")
-frame_count = 0
+sim_step = 0
 
 # --- ROTATION MATRIX LOGIC ---
 # Identity Matrix (No rotation)
-# [ R00 R01 R02 ]
-# [ R10 R11 R12 ]
-# [ R20 R21 R22 ]
 rotation_matrix = np.eye(3, dtype=np.float32)
 
 def rotate_x(angle):
@@ -153,16 +149,17 @@ def rotate_y(angle):
     return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]], dtype=np.float32)
 
 cam_zoom = 300.0
-cam_offset_x = 0.0
-cam_offset_y = 0.0
+# We now track a 3D Target point in the World
+cam_target = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+
 last_mouse_pos = (0, 0)
 dragging_left = False
 dragging_middle = False
 paused = False
 
 print("Controls:")
-print("  [Left Drag]   Rotate (Pitch & Yaw)")
-print("  [Middle Drag] Pan (Drag on plane)")
+print("  [Left Drag]   Rotate (Pitch & Yaw) around Pivot")
+print("  [Middle Drag] Pan (Move Pivot)")
 print("  [Scroll]      Zoom")
 print("  [Space]       Pause")
 print("  [R]           Reset")
@@ -172,10 +169,9 @@ while running:
     if not paused:
         lib.step_simulation(particles_ptr, config[0])
         
-        # Update Graph every 10 frames to save FPS
-        if frame_count % 10 == 0:
+        if sim_step % 10 == 0:
             lib.get_energy_stats(particles_ptr, config[0], energy_stats)
-            t_data.append(frame_count)
+            t_data.append(sim_step)
             ke_data.append(energy_stats.kinetic)
             pe_data.append(energy_stats.potential)
             te_data.append(energy_stats.total_energy)
@@ -187,24 +183,23 @@ while running:
             ax.relim()
             ax.autoscale_view()
             plt.pause(0.001)
-
-    frame_count += 1
+        sim_step += 1
 
     # Pass the matrix to C
-    # flatten() converts 3x3 to 9 floats
     rot_ptr = ffi.cast("float*", rotation_matrix.ctypes.data)
     
+    # Pass the 3D target coordinates
     lib.render_cpu(particles_ptr, NUM_PARTICLES, pixel_ptr, WIDTH, HEIGHT, 
-                   rot_ptr, cam_zoom, cam_offset_x, cam_offset_y)
+                   rot_ptr, cam_zoom, 
+                   cam_target[0], cam_target[1], cam_target[2])
     
     surface_array = pixel_buffer.reshape((HEIGHT, WIDTH, 3))
     surface = pygame.surfarray.make_surface(surface_array.swapaxes(0, 1))
     screen.blit(surface, (0, 0))
     
     state = "PAUSED" if paused else "RUNNING"
-    # adding a fps counter to the window title
     fps = clock.get_fps()
-    pygame.display.set_caption(f"Sim | {state} | Particles: {NUM_PARTICLES} | FPS: {fps:.2f}")
+    pygame.display.set_caption(f"Sim | {state} | Particles: {NUM_PARTICLES} | FPS: {fps:.2f} | Step: {sim_step}")
 
     pygame.display.flip()
     clock.tick(60)
@@ -218,14 +213,13 @@ while running:
             if event.key == pygame.K_r: 
                 rotation_matrix = np.eye(3, dtype=np.float32)
                 cam_zoom = 300.0
-                cam_offset_x = 0.0
-                cam_offset_y = 0.0
+                cam_target = np.array([0.0, 0.0, 0.0], dtype=np.float32)
                 
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1: # Left Click
                 dragging_left = True
                 last_mouse_pos = event.pos
-            elif event.button == 2: # Middle Click (Scroll Wheel Click)
+            elif event.button == 2: # Middle Click
                 dragging_middle = True
                 last_mouse_pos = event.pos
             elif event.button == 4: cam_zoom *= 1.1
@@ -252,10 +246,14 @@ while running:
                 rot_y = rotate_y(-dx * sensitivity)
                 rotation_matrix = np.dot(rot_y, rotation_matrix)
                 
-            # Middle Click: Pan the camera planet
+            # Middle Click: Pan the camera plane
             if dragging_middle:
-                current_scale = cam_zoom / 1000.0
-                if current_scale < 0.001: current_scale = 0.001
+                inv_scale = 1000.0 / cam_zoom
+                if inv_scale > 100.0: inv_scale = 100.0
+
+                move_view = np.array([-dx * inv_scale, -dy * inv_scale, 0.0], dtype=np.float32)
                 
-                cam_offset_x += dx / current_scale
-                cam_offset_y += dy / current_scale
+                #    move_world = R_transpose * move_view
+                move_world = np.dot(rotation_matrix.T, move_view)
+                
+                cam_target += move_world
