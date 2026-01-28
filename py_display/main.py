@@ -49,9 +49,10 @@ ffi.cdef("""
                     float tx, float ty, float tz);
 """)
 
-dll_path = os.path.join(os.path.dirname(__file__), "..", "c_core", "physics.dll")
+# Updated to point to the new build folder
+dll_path = os.path.join(os.path.dirname(__file__), "..", "build", "physics.dll")
 if not os.path.exists(dll_path):
-    print("DLL not found. Build it!")
+    print(f"DLL not found at {dll_path}. Please run the build task first!")
     exit()
 lib = ffi.dlopen(dll_path)
 
@@ -95,8 +96,6 @@ def create_sphere(start, count, cx, cy, cz, r, mass, vx, vy, vz):
 
 print("Generating Planets...")
 create_sphere(0, NUM_PARTICLES, 0, 0, 0, 200, 100000, 0, 0, 0)
-# create_sphere(0, NUM_PARTICLES//2, -400, 0, 0, 200, 100000, 15, 10, 0)
-# create_sphere(NUM_PARTICLES//2, NUM_PARTICLES//2, 400, 0, 0, 200, 100000, -15, -10, 0)
 
 config = ffi.new("SimConfig*")
 config.particle_count = NUM_PARTICLES
@@ -137,7 +136,6 @@ energy_stats = ffi.new("EnergyStats*")
 sim_step = 0
 
 # --- ROTATION MATRIX LOGIC ---
-# Identity Matrix (No rotation)
 rotation_matrix = np.eye(3, dtype=np.float32)
 
 def rotate_x(angle):
@@ -176,19 +174,17 @@ while running:
             pe_data.append(energy_stats.potential)
             te_data.append(energy_stats.total_energy)
             
-            line_ke.set_data(t_data, ke_data)
-            line_pe.set_data(t_data, pe_data)
-            line_te.set_data(t_data, te_data)
+            line_ke.set_data(list(t_data), list(ke_data))
+            line_pe.set_data(list(t_data), list(pe_data))
+            line_te.set_data(list(t_data), list(te_data))
             
             ax.relim()
             ax.autoscale_view()
             plt.pause(0.001)
         sim_step += 1
 
-    # Pass the matrix to C
     rot_ptr = ffi.cast("float*", rotation_matrix.ctypes.data)
     
-    # Pass the 3D target coordinates
     lib.render_cpu(particles_ptr, NUM_PARTICLES, pixel_ptr, WIDTH, HEIGHT, 
                    rot_ptr, cam_zoom, 
                    cam_target[0], cam_target[1], cam_target[2])
@@ -236,24 +232,17 @@ while running:
             
             sensitivity = 0.005
             
-            # Left Click: Vertical/Horizontal Mouse Movement -> Rotate Pitch & Yaw
             if dragging_left:
-                # Pitch (X-axis rotation)
                 rot_x = rotate_x(dy * sensitivity)
                 rotation_matrix = np.dot(rot_x, rotation_matrix)
-                
-                # Yaw (Y-axis rotation)
                 rot_y = rotate_y(-dx * sensitivity)
                 rotation_matrix = np.dot(rot_y, rotation_matrix)
                 
-            # Middle Click: Pan the camera plane
             if dragging_middle:
                 inv_scale = 1000.0 / cam_zoom
                 if inv_scale > 100.0: inv_scale = 100.0
-
                 move_view = np.array([-dx * inv_scale, -dy * inv_scale, 0.0], dtype=np.float32)
-                
-                #    move_world = R_transpose * move_view
                 move_world = np.dot(rotation_matrix.T, move_view)
-                
                 cam_target += move_world
+
+pygame.quit()

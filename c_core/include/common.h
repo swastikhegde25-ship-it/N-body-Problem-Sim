@@ -8,7 +8,8 @@
     #define EXPORT
 #endif
 
-#define MAX_NODES 400000 
+#undef MAX_NODES
+#define MAX_NODES 2000000
 
 // --- Structures ---
 typedef struct {
@@ -54,14 +55,3 @@ typedef struct {
     double kinetic;
     double potential;
 } EnergyStats;
-
-// --- Functions ---
-EXPORT void init_simulation();
-EXPORT void step_simulation(Particle* particles, SimConfig config);
-EXPORT void get_energy_stats(Particle* particles, SimConfig config, EnergyStats* stats);
-
-// UPDATED: Now takes 3D target coordinates (tx, ty, tz)
-EXPORT void render_cpu(Particle* particles, int count, uint8_t* pixels, 
-                       int width, int height, 
-                       float* rot_matrix, float zoom_factor, 
-                       float tx, float ty, float tz);

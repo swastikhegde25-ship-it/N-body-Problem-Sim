@@ -24,11 +24,12 @@ C is used for heavy physics calculations, and Python is used for visualization.
 
 1.  **Install Requirements:**
     ```bash
-    pip install pygame numpy cffi moderngl
+    pip install pygame numpy cffi matplotlib moderngl
     ```
 
 2.  **Compile the Physics Engine:**
-    *   In VS Code, press `Ctrl + Shift + B` to build the C DLL.
+    *   In VS Code, press `Ctrl + Shift + B`. 
+    *   This will automatically compile all `.c` files in `c_core/src` and create a `build/` folder containing the `physics.dll`.
 
 3.  **Run the Simulation:**
     ```bash

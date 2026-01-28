@@ -4,19 +4,14 @@
         {
             "label": "Build Physics DLL",
             "type": "shell",
-            "command": "cl",
+            "command": "powershell",
             "args": [
-                "/nologo",
-                "/O2",
-                "/openmp",
-                "/W4",
-                "/LD",
-                "/Fe:c_core/physics.dll",  // Output: c_core folder
-                "c_core/physics.c"         // Input: c_core folder
+                "-Command",
+                "if (!(Test-Path build)) { New-Item -ItemType Directory -Path build }; cl /nologo /O2 /openmp /W4 /LD /I c_core/include c_core/src/*.c /Fo:build/ /Fe:build/physics.dll"
             ],
             "group": { "kind": "build", "isDefault": true },
             "problemMatcher": ["$msCompile"],
-            "detail": "Compiles physics.c into a high-performance DLL"
+            "detail": "Creates build folder and compiles modular source into physics.dll"
         }
     ]
 }
